@@ -20,7 +20,7 @@ except Exception:
 
 # ================= ⚙️ 頁面與全域設定 =================
 st.set_page_config(
-    page_title="族語影音降噪神器",
+    page_title="Suyang! 族語影音降噪工具",
     page_icon="🎙️",
     layout="wide"
 )
@@ -303,7 +303,7 @@ def process_media(source, atten_lim_db):
 
 # ================= 🖥️ 網頁前端介面 =================
 def main():
-    st.title("🎙️ 族語影音降噪神器")
+    st.title("🎙️ Suyang! 族語影音降噪工具")
     
     # ---------------- 側邊欄設定 ----------------
     with st.sidebar:
@@ -412,14 +412,14 @@ def main():
                 
             # 下載按鈕
             st.download_button(
-                label=f"⬇️ 下載成果 ({st.session_state.processed_file_name})", 
+                label=f"⬇️ 下載降噪後的檔案 ({st.session_state.processed_file_name})", 
                 data=bytes_data, 
                 file_name=st.session_state.processed_file_name, 
                 use_container_width=True
             )
             
             # 處理下一個檔案的按鈕 (包含清理暫存邏輯)
-            if st.button("🔄 處理下一個檔案", use_container_width=True):
+            if st.button("🔄 繼續處理下一個檔案", use_container_width=True):
                 try: 
                     shutil.rmtree(os.path.dirname(st.session_state.processed_file_path))
                 except Exception: 
@@ -434,3 +434,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
