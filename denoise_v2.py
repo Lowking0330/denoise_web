@@ -20,7 +20,7 @@ except Exception:
 
 # ================= ⚙️ 頁面與全域設定 =================
 st.set_page_config(
-    page_title="Suyang! 族語影音降噪工具",
+    page_title="族語影音降噪神器",
     page_icon="🎙️",
     layout="wide"
 )
@@ -303,7 +303,25 @@ def process_media(source, atten_lim_db):
 
 # ================= 🖥️ 網頁前端介面 =================
 def main():
-    st.title("🎙️ Suyang! 族語影音降噪工具")
+    st.title("🎙️ 族語影音降噪神器")
+    
+    # ---------------- 📖 操作指引區塊 (置於首頁大標題下) ----------------
+    st.info("💡 **快速使用**：1️⃣ 左方上傳檔案 ➡️ 2️⃣ 點擊開始降噪 ➡️ 3️⃣ 右方試聽與下載 (可於左側邊欄微調強度)")
+    
+    with st.expander("📖 查看詳細操作說明 (初次使用建議閱讀)", expanded=False):
+        st.markdown("""
+        #### 🛠️ 使用步驟
+        1. **📥 上傳檔案**：將需要處理的影音檔案（支援 `.mp4`, `.wav`, `.mp3` 等）拖曳或點選上傳至左下方的「檔案上傳」區塊。
+        2. **🎛️ 調整強度 (可選)**：展開最左側的隱藏邊欄 (點擊 〉符號)，您可以調整「降噪強度」。
+           - **預設 50dB**：適合多數日常錄音，能有效去噪並保留人聲自然度。
+           - **最高 100dB**：適合背景非常吵雜（如強風、馬路邊、冷氣聲）的環境。
+        3. **🚀 執行降噪**：按下「開始降噪處理」按鈕，系統會顯示目前進度與預估時間，請耐心等待。
+        4. **💾 預覽與下載**：處理完畢後，右側畫面會出現播放器。您可以先試聽/試看，確認滿意後再點擊按鈕下載。
+
+        ⚠️ **隱私與安全聲明**：本系統為自動化即時處理。當您下載檔案或點擊「處理下一個」時，伺服器會自動銷毀您的所有影音暫存檔，絕不留存原始資料，請安心使用！
+        """)
+
+    st.markdown("---") # 分隔線
     
     # ---------------- 側邊欄設定 ----------------
     with st.sidebar:
@@ -412,14 +430,14 @@ def main():
                 
             # 下載按鈕
             st.download_button(
-                label=f"⬇️ 下載降噪後的檔案 ({st.session_state.processed_file_name})", 
+                label=f"⬇️ 下載成果 ({st.session_state.processed_file_name})", 
                 data=bytes_data, 
                 file_name=st.session_state.processed_file_name, 
                 use_container_width=True
             )
             
             # 處理下一個檔案的按鈕 (包含清理暫存邏輯)
-            if st.button("🔄 繼續處理下一個檔案", use_container_width=True):
+            if st.button("🔄 處理下一個檔案", use_container_width=True):
                 try: 
                     shutil.rmtree(os.path.dirname(st.session_state.processed_file_path))
                 except Exception: 
@@ -434,4 +452,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
