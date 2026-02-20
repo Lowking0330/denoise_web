@@ -201,8 +201,11 @@ def load_ai_model():
         from df.enhance import init_df
         model, df_state, _ = init_df(model_base_dir=None)
         return model, df_state
-    except ImportError:
-        raise RuntimeError("缺少套件！請執行: pip install deepfilternet torch torchaudio soundfile yt-dlp")
+    except ImportError as e:
+        # 解除錯誤遮蔽：印出真正的 ImportError 原因
+        raise RuntimeError(f"套件載入失敗！雲端真實錯誤訊息: {str(e)}")
+    except Exception as e:
+        raise RuntimeError(f"模型初始化發生錯誤: {str(e)}")
 
 # ================= 🌐 YouTube 下載功能 =================
 def download_youtube_video(url, output_dir):
