@@ -207,7 +207,7 @@ def load_ai_model():
     except Exception as e:
         raise RuntimeError(f"模型初始化發生錯誤: {str(e)}")
 
-# ================= 🌐 YouTube 下載功能 =================
+# ================= 🌐 YouTube 下載功能 (深度反阻擋升級版) =================
 def download_youtube_video(url, output_dir):
     try:
         import yt_dlp
@@ -220,17 +220,23 @@ def download_youtube_video(url, output_dir):
         'noplaylist': True, 
         'quiet': True, 
         'no_warnings': True,
-        # ⬇️ 新增反阻擋參數：偽裝成手機或電視客戶端，繞過 403 Forbidden 錯誤
+        # ⬇️ 終極反阻擋策略：強制使用 IPv4，避免雲端 IPv6 被 YouTube 封鎖
+        'source_address': '0.0.0.0',
+        # ⬇️ 拔除 web 端，100% 偽裝成 Android 或 iOS 手機 APP
         'extractor_args': {
             'youtube': {
-                'client': ['android', 'ios', 'tv', 'web']
+                'client': ['android', 'ios']
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
         }
     }
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # 強制清除快取，避免舊的 HTTP 403 阻擋紀錄殘留
+        ydl.cache.remove()
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info)
 
