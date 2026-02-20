@@ -145,7 +145,10 @@ else:
 def log_usage(target_name):
     """將使用紀錄寫入本地 txt 檔案"""
     try:
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 強制設定為台灣台北時間 (UTC+8)
+        tz_taipei = datetime.timezone(datetime.timedelta(hours=8))
+        timestamp = datetime.datetime.now(tz_taipei).strftime("%Y-%m-%d %H:%M:%S")
+        
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] 來源: 本機檔案 | 處理對象: {target_name}\n")
     except Exception:
