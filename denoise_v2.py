@@ -130,12 +130,6 @@ st.markdown("""
         font-weight: 500;
         font-size: 1.1rem;
     }
-    
-    /* 頁籤字體放大 */
-    button[data-baseweb="tab"] p {
-        font-size: 1.3rem !important;
-        font-weight: 600 !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -148,13 +142,12 @@ if "ADMIN_PASSWORD" in st.secrets:
 else:
     ADMIN_PASSWORD = "ilrdf"  # 若未設定 Secrets 的備用密碼
 
-def log_usage(target_name, is_youtube):
+def log_usage(target_name):
     """將使用紀錄寫入本地 txt 檔案"""
     try:
-        source_type = "YouTube" if is_youtube else "本機檔案"
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(f"[{timestamp}] 來源: {source_type} | 處理對象: {target_name}\n")
+            f.write(f"[{timestamp}] 來源: 本機檔案 | 處理對象: {target_name}\n")
     except Exception:
         pass
 
@@ -180,8 +173,6 @@ if "error_message" not in st.session_state:
     st.session_state.error_message = None
 if "process_target" not in st.session_state:
     st.session_state.process_target = None
-if "is_yt_source" not in st.session_state:
-    st.session_state.is_yt_source = False
 
 # ================= 🩹 系統補丁 =================
 def apply_patches():
@@ -202,69 +193,15 @@ def load_ai_model():
         model, df_state, _ = init_df(model_base_dir=None)
         return model, df_state
     except ImportError as e:
-        # 解除錯誤遮蔽：印出真正的 ImportError 原因
         raise RuntimeError(f"套件載入失敗！雲端真實錯誤訊息: {str(e)}")
     except Exception as e:
         raise RuntimeError(f"模型初始化發生錯誤: {str(e)}")
 
-# ================= 🌐 YouTube 下載功能 (深度反阻擋升級版) =================
-def download_youtube_video(url, output_dir):
-    # 1. 強制確保 yt-dlp 是全世界最新版 (因為 YouTube 每天都在更新防堵機制)
-    try:
-        subprocess.run(["pip", "install", "-U", "yt-dlp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
-
-    try:
-        import yt_dlp
-    except ImportError:
-        raise RuntimeError("請執行: pip install yt-dlp")
-        
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'noplaylist': True, 
-        'quiet': True, 
-        'no_warnings': True,
-        # ⬇️ 反阻擋策略 1：強制使用 IPv4，避免雲端 IPv6 被 YouTube 封鎖
-        'source_address': '0.0.0.0',
-        # ⬇️ 反阻擋策略 2：嘗試繞過地理限制阻擋
-        'geo_bypass': True,
-        # ⬇️ 反阻擋策略 3：拔除 web 端，偽裝成 TV 或 Android 裝置 (限制最少)
-        'extractor_args': {
-            'youtube': {
-                'client': ['tv', 'android', 'ios']
-            }
-        },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-        }
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # 強制清除快取，避免舊的 HTTP 403 阻擋紀錄殘留
-            ydl.cache.remove()
-            info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info)
-    except Exception as e:
-        error_str = str(e)
-        # 針對 403 錯誤提供專屬且易懂的提示
-        if "403" in error_str or "Forbidden" in error_str or "Sign in" in error_str:
-            raise RuntimeError("YouTube 拒絕了雲端伺服器的下載請求 (HTTP 403)。這是由於 Streamlit 雲端主機的 IP 被 YouTube 判定為機器人並進行封鎖。建議您先將影片下載至本機，再透過「本機檔案上傳」進行降噪。")
-        else:
-            raise RuntimeError(error_str)
-
 # ================= 🛠️ 核心處理邏輯 =================
-def process_media(source, atten_lim_db, is_youtube=False):
+def process_media(source, atten_lim_db):
     """處理影音檔案的核心函式"""
     
-    # 決定原始檔名
-    if is_youtube:
-        original_name = os.path.basename(source)
-    else:
-        original_name = source.name
+    original_name = source.name
         
     name, ext = os.path.splitext(original_name)
     audio_extensions = (".wav", ".mp3", ".m4a", ".aac", ".flac")
@@ -283,11 +220,8 @@ def process_media(source, atten_lim_db, is_youtube=False):
 
     try:
         # 1. 準備來源檔案
-        if is_youtube:
-            shutil.copy(source, input_path)
-        else:
-            with open(input_path, "wb") as f:
-                f.write(source.getbuffer())
+        with open(input_path, "wb") as f:
+            f.write(source.getbuffer())
 
         # 2. 提取音訊 (轉為 48kHz 單聲道 WAV)
         cmd_extract = [
@@ -354,7 +288,7 @@ def process_media(source, atten_lim_db, is_youtube=False):
         st.session_state.processed_file_name = final_output_name
         
         # 成功後寫入 Log 紀錄
-        log_usage(original_name, is_youtube)
+        log_usage(original_name)
         
         return True, "處理成功！"
 
@@ -422,53 +356,22 @@ def main():
     
     # 左側欄位：上傳與輸入區
     with col1:
-        st.subheader("📥 選擇來源")
-        tab_local, tab_yt = st.tabs(["📁 本機檔案上傳", "🌐 YouTube 網址"])
+        st.subheader("📥 檔案上傳")
         
-        # 頁籤 1：本機上傳
-        with tab_local:
-            supported = ("mp4", "mov", "avi", "mkv", "wav", "mp3", "m4a", "aac", "flac")
-            uploaded_file = st.file_uploader("請選擇要降噪的檔案", type=supported)
-            
-            if uploaded_file and not st.session_state.processed_file_path:
-                if st.button("🚀 開始降噪處理 (本機)", use_container_width=True):
-                    st.session_state.process_target = uploaded_file
-                    st.session_state.is_yt_source = False
-                    st.session_state.is_processing = True
-                    st.rerun()
-
-        # 頁籤 2：YouTube 網址
-        with tab_yt:
-            st.info("⚠️ **雲端限制提醒**：受限於 YouTube 嚴格的防機器人機制，雲端伺服器極易被判定阻擋。若處理失敗，請改用本機上傳。")
-            yt_url = st.text_input("請輸入 YouTube 影片網址", placeholder="https://www.youtube.com/watch?v=...")
-            
-            if yt_url and not st.session_state.processed_file_path:
-                if st.button("🚀 開始降噪處理 (YouTube)", use_container_width=True):
-                    st.session_state.process_target = yt_url
-                    st.session_state.is_yt_source = True
-                    st.session_state.is_processing = True
-                    st.rerun()
+        supported = ("mp4", "mov", "avi", "mkv", "wav", "mp3", "m4a", "aac", "flac")
+        uploaded_file = st.file_uploader("請選擇要降噪的檔案", type=supported)
+        
+        if uploaded_file and not st.session_state.processed_file_path:
+            if st.button("🚀 開始降噪處理", use_container_width=True):
+                st.session_state.process_target = uploaded_file
+                st.session_state.is_processing = True
+                st.rerun()
 
         # 處理進度顯示區塊
         if st.session_state.is_processing:
             with st.status("AI 降噪處理中...", expanded=True) as status:
-                success = False
-                msg = ""
-                
-                if st.session_state.is_yt_source:
-                    st.write("🌐 正在從 YouTube 下載影音... (若卡住過久可能是 IP 被限制，請稍候)")
-                    try:
-                        temp_yt_dir = tempfile.mkdtemp(prefix="yt_")
-                        downloaded_path = download_youtube_video(st.session_state.process_target, temp_yt_dir)
-                        
-                        st.write("⏳ 步驟 1/3: YouTube 下載完成，正在提取並轉換音訊格式...")
-                        success, msg = process_media(downloaded_path, atten_lim, is_youtube=True)
-                    except Exception as e: 
-                        success = False
-                        msg = f"{str(e)}"
-                else:
-                    st.write("⏳ 步驟 1/3: 正在提取並轉換音訊格式...")
-                    success, msg = process_media(st.session_state.process_target, atten_lim, is_youtube=False)
+                st.write("⏳ 步驟 1/3: 正在提取並轉換音訊格式...")
+                success, msg = process_media(st.session_state.process_target, atten_lim)
                 
                 # 處理完畢更新狀態
                 st.session_state.is_processing = False
