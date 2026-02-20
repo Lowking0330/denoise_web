@@ -209,6 +209,12 @@ def load_ai_model():
 
 # ================= 🌐 YouTube 下載功能 (深度反阻擋升級版) =================
 def download_youtube_video(url, output_dir):
+    # 1. 強制確保 yt-dlp 是全世界最新版 (因為 YouTube 每天都在更新防堵機制)
+    try:
+        subprocess.run(["pip", "install", "-U", "yt-dlp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
     try:
         import yt_dlp
     except ImportError:
@@ -222,23 +228,31 @@ def download_youtube_video(url, output_dir):
         'no_warnings': True,
         # ⬇️ 終極反阻擋策略：強制使用 IPv4，避免雲端 IPv6 被 YouTube 封鎖
         'source_address': '0.0.0.0',
-        # ⬇️ 拔除 web 端，100% 偽裝成 Android 或 iOS 手機 APP
+        # ⬇️ 拔除 web 端，偽裝成 TV 或 Android 裝置 (限制最少)
         'extractor_args': {
             'youtube': {
-                'client': ['android', 'ios']
+                'client': ['tv', 'android', 'ios']
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
-            'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': '*/*',
         }
     }
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        # 強制清除快取，避免舊的 HTTP 403 阻擋紀錄殘留
-        ydl.cache.remove()
-        info = ydl.extract_info(url, download=True)
-        return ydl.prepare_filename(info)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # 強制清除快取，避免舊的 HTTP 403 阻擋紀錄殘留
+            ydl.cache.remove()
+            info = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info)
+    except Exception as e:
+        error_str = str(e)
+        # 針對 403 錯誤提供專屬且易懂的提示
+        if "403" in error_str or "Forbidden" in error_str:
+            raise RuntimeError("YouTube 拒絕了雲端伺服器的下載請求 (HTTP 403)。這是因為 Streamlit 雲端 IP 被 YouTube 官方列入機器人黑名單。建議您先將影片下載至本機，再透過「本機檔案上傳」進行降噪。")
+        else:
+            raise RuntimeError(error_str)
 
 # ================= 🛠️ 核心處理邏輯 =================
 def process_media(source, atten_lim_db, is_youtube=False):
@@ -448,7 +462,7 @@ def main():
                         success, msg = process_media(downloaded_path, atten_lim, is_youtube=True)
                     except Exception as e: 
                         success = False
-                        msg = f"下載失敗: {str(e)}"
+                        msg = f"{str(e)}"
                 else:
                     st.write("⏳ 步驟 1/3: 正在提取並轉換音訊格式...")
                     success, msg = process_media(st.session_state.process_target, atten_lim, is_youtube=False)
