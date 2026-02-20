@@ -20,7 +20,7 @@ except Exception:
 
 # ================= ⚙️ 頁面與全域設定 =================
 st.set_page_config(
-    page_title="族語影音降噪神器",
+    page_title="Suyang! 族語影音降噪工具",
     page_icon="🎙️",
     layout="wide"
 )
@@ -303,11 +303,11 @@ def process_media(source, atten_lim_db):
 
 # ================= 🖥️ 網頁前端介面 =================
 def main():
-    st.title("🎙️ 族語影音降噪神器")
+    st.title("🎙️ Suyang! 族語影音降噪工具")
     
     # ---------------- 📖 操作指引區塊 (置於首頁大標題下) ----------------
-    # 將 Emoji 替換為支援變色的字元，並使用 Streamlit 的 :red[] 語法
-    st.info("💡 **快速使用**： :red[**❶**] 左方上傳檔案 :red[**➔**] :red[**❷**] 點擊開始降噪 :red[**➔**] :red[**❸**] 右方試聽與下載 (可於左側邊欄微調強度)")
+    # 保留 Emoji 數字，僅讓箭頭變色
+    st.info("💡 **快速使用**： 1️⃣ 左方上傳檔案 :red[**➔**] 2️⃣ 點擊開始降噪 :red[**➔**] 3️⃣ 右方試聽與下載 (可於左側邊欄微調強度)")
     
     with st.expander("📖 查看詳細操作說明 (初次使用建議閱讀)", expanded=False):
         st.markdown("""
@@ -431,14 +431,14 @@ def main():
                 
             # 下載按鈕
             st.download_button(
-                label=f"⬇️ 下載成果 ({st.session_state.processed_file_name})", 
+                label=f"⬇️ 下載降噪後檔案 ({st.session_state.processed_file_name})", 
                 data=bytes_data, 
                 file_name=st.session_state.processed_file_name, 
                 use_container_width=True
             )
             
             # 處理下一個檔案的按鈕 (包含清理暫存邏輯)
-            if st.button("🔄 處理下一個檔案", use_container_width=True):
+            if st.button("🔄 繼續處理下一個檔案", use_container_width=True):
                 try: 
                     shutil.rmtree(os.path.dirname(st.session_state.processed_file_path))
                 except Exception: 
