@@ -226,9 +226,11 @@ def download_youtube_video(url, output_dir):
         'noplaylist': True, 
         'quiet': True, 
         'no_warnings': True,
-        # ⬇️ 終極反阻擋策略：強制使用 IPv4，避免雲端 IPv6 被 YouTube 封鎖
+        # ⬇️ 反阻擋策略 1：強制使用 IPv4，避免雲端 IPv6 被 YouTube 封鎖
         'source_address': '0.0.0.0',
-        # ⬇️ 拔除 web 端，偽裝成 TV 或 Android 裝置 (限制最少)
+        # ⬇️ 反阻擋策略 2：嘗試繞過地理限制阻擋
+        'geo_bypass': True,
+        # ⬇️ 反阻擋策略 3：拔除 web 端，偽裝成 TV 或 Android 裝置 (限制最少)
         'extractor_args': {
             'youtube': {
                 'client': ['tv', 'android', 'ios']
@@ -249,8 +251,8 @@ def download_youtube_video(url, output_dir):
     except Exception as e:
         error_str = str(e)
         # 針對 403 錯誤提供專屬且易懂的提示
-        if "403" in error_str or "Forbidden" in error_str:
-            raise RuntimeError("YouTube 拒絕了雲端伺服器的下載請求 (HTTP 403)。這是因為 Streamlit 雲端 IP 被 YouTube 官方列入機器人黑名單。建議您先將影片下載至本機，再透過「本機檔案上傳」進行降噪。")
+        if "403" in error_str or "Forbidden" in error_str or "Sign in" in error_str:
+            raise RuntimeError("YouTube 拒絕了雲端伺服器的下載請求 (HTTP 403)。這是由於 Streamlit 雲端主機的 IP 被 YouTube 判定為機器人並進行封鎖。建議您先將影片下載至本機，再透過「本機檔案上傳」進行降噪。")
         else:
             raise RuntimeError(error_str)
 
@@ -437,6 +439,7 @@ def main():
 
         # 頁籤 2：YouTube 網址
         with tab_yt:
+            st.info("⚠️ **雲端限制提醒**：受限於 YouTube 嚴格的防機器人機制，雲端伺服器極易被判定阻擋。若處理失敗，請改用本機上傳。")
             yt_url = st.text_input("請輸入 YouTube 影片網址", placeholder="https://www.youtube.com/watch?v=...")
             
             if yt_url and not st.session_state.processed_file_path:
@@ -453,7 +456,7 @@ def main():
                 msg = ""
                 
                 if st.session_state.is_yt_source:
-                    st.write("🌐 正在從 YouTube 下載影音... (依網路速度而定，請稍候)")
+                    st.write("🌐 正在從 YouTube 下載影音... (若卡住過久可能是 IP 被限制，請稍候)")
                     try:
                         temp_yt_dir = tempfile.mkdtemp(prefix="yt_")
                         downloaded_path = download_youtube_video(st.session_state.process_target, temp_yt_dir)
