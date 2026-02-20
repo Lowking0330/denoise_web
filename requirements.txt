@@ -1,0 +1,6 @@
+streamlit
+deepfilternet
+torch
+torchaudio
+soundfile
+yt-dlp

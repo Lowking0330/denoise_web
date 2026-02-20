@@ -1,0 +1,16 @@
+# 絕對不能上傳的密碼與機密設定
+.streamlit/
+secrets.toml
+
+# 系統與 Python 暫存檔
+__pycache__/
+*.pyc
+.DS_Store
+
+# 您的本機日誌檔案 (上傳的話會把您自己的紀錄公開)
+denoise_usage_log.txt
+
+# 虛擬環境 (如果有的話)
+venv/
+env/
+.venv/
