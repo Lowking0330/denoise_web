@@ -356,6 +356,8 @@ def main():
             current_user = f"訪客_{st.session_state.session_id}"
         else:
             current_user = user_name_input.strip()
+            # 成功輸入後顯示專屬族語歡迎語
+            st.success(f"Embiyax su hug? 歡迎您，{current_user}！")
             
         st.markdown("---")
         
