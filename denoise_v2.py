@@ -8,6 +8,8 @@ import time
 import torch
 import torchaudio
 import datetime
+import csv
+import uuid
 
 # 忽略警告
 warnings.filterwarnings("ignore")
@@ -133,39 +135,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 📊 系統日誌與統計 =================
-LOG_FILE = "denoise_usage_log.txt"
-
-# 安全升級：優先從 Streamlit Secrets 讀取密碼，避免明文外流至 GitHub
-if "ADMIN_PASSWORD" in st.secrets:
-    ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
-else:
-    ADMIN_PASSWORD = "ilrdf"  # 若未設定 Secrets 的備用密碼
-
-def log_usage(target_name):
-    """將使用紀錄寫入本地 txt 檔案"""
-    try:
-        # 強制設定為台灣台北時間 (UTC+8)
-        tz_taipei = datetime.timezone(datetime.timedelta(hours=8))
-        timestamp = datetime.datetime.now(tz_taipei).strftime("%Y-%m-%d %H:%M:%S")
-        
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(f"[{timestamp}] 來源: 本機檔案 | 處理對象: {target_name}\n")
-    except Exception:
-        pass
-
-def get_usage_data():
-    """讀取總處理資料"""
-    try:
-        if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                return lines
-        return []
-    except Exception:
-        return []
-
 # ================= 🔄 初始化 Session State =================
+if "session_id" not in st.session_state:
+    # 產生一組 4 碼的隨機代碼作為訪客 ID
+    st.session_state.session_id = uuid.uuid4().hex[:4].upper()
 if "processed_file_path" not in st.session_state:
     st.session_state.processed_file_path = None
 if "processed_file_name" not in st.session_state:
@@ -176,6 +149,51 @@ if "error_message" not in st.session_state:
     st.session_state.error_message = None
 if "process_target" not in st.session_state:
     st.session_state.process_target = None
+
+# ================= 📊 系統日誌與統計 (升級 CSV 版) =================
+LOG_FILE = "denoise_usage_log.csv"
+
+# 安全升級：優先從 Streamlit Secrets 讀取密碼
+if "ADMIN_PASSWORD" in st.secrets:
+    ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
+else:
+    ADMIN_PASSWORD = "ilrdf"
+
+def log_usage(user_name, original_name, file_size_mb, atten_lim_db, duration_sec, status, error_info):
+    """將使用紀錄完整寫入本地 CSV 檔案"""
+    try:
+        # 強制設定為台灣台北時間 (UTC+8)
+        tz_taipei = datetime.timezone(datetime.timedelta(hours=8))
+        timestamp = datetime.datetime.now(tz_taipei).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 判斷檔案類型
+        ext = os.path.splitext(original_name)[1].lower()
+        file_type = "音檔" if ext in [".wav", ".mp3", ".m4a", ".aac", ".flac"] else "影片"
+        
+        file_exists = os.path.isfile(LOG_FILE)
+        
+        # 使用 utf-8-sig 確保 Excel 開啟時不會有中文亂碼
+        with open(LOG_FILE, "a", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            # 若檔案不存在，先寫入標題列
+            if not file_exists:
+                writer.writerow(["處理時間", "使用者姓名", "原始檔名", "檔案類型", "檔案大小(MB)", "降噪強度(dB)", "處理耗時(秒)", "處理狀態", "錯誤詳細資訊"])
+            
+            # 寫入本次數據
+            writer.writerow([timestamp, user_name, original_name, file_type, file_size_mb, atten_lim_db, duration_sec, status, error_info])
+    except Exception:
+        pass
+
+def get_usage_data():
+    """讀取總處理資料"""
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, "r", encoding="utf-8-sig") as f:
+                lines = f.readlines()
+                return lines
+        return []
+    except Exception:
+        return []
 
 # ================= 🩹 系統補丁 =================
 def apply_patches():
@@ -201,20 +219,21 @@ def load_ai_model():
         raise RuntimeError(f"模型初始化發生錯誤: {str(e)}")
 
 # ================= 🛠️ 核心處理邏輯 =================
-def process_media(source, atten_lim_db):
-    """處理影音檔案的核心函式"""
+def process_media(source, atten_lim_db, user_name):
+    """處理影音檔案的核心函式，並包含完整的數據紀錄"""
+    global_start_time = time.time()
     
     original_name = source.name
+    # 計算檔案大小 (MB)，保留兩位小數
+    file_size_mb = round(source.size / (1024 * 1024), 2)
         
     name, ext = os.path.splitext(original_name)
     audio_extensions = (".wav", ".mp3", ".m4a", ".aac", ".flac")
     is_audio_only = ext.lower() in audio_extensions
     output_ext = ext if is_audio_only else ".mp4"
     
-    # 動態產生包含降噪強度的檔名
     final_output_name = f"{name}_{atten_lim_db}db{output_ext}"
 
-    # 建立獨立暫存資料夾
     work_dir = tempfile.mkdtemp(prefix="denoise_")
     input_path = os.path.join(work_dir, original_name)
     output_path = os.path.join(work_dir, final_output_name)
@@ -226,21 +245,21 @@ def process_media(source, atten_lim_db):
         with open(input_path, "wb") as f:
             f.write(source.getbuffer())
 
-        # 2. 提取音訊 (轉為 48kHz 單聲道 WAV)
+        # 2. 提取音訊
         cmd_extract = [
             "ffmpeg", "-y", "-i", input_path, "-vn", "-acodec", "pcm_s16le", 
             "-ar", "48000", "-ac", "1", temp_noisy, "-hide_banner", "-loglevel", "error"
         ]
         subprocess.run(cmd_extract, check=True, capture_output=True)
 
-        # 3. AI 降噪運算 (分段處理)
+        # 3. AI 降噪運算
         model, df_state = load_ai_model()
         from df.enhance import load_audio, save_audio, enhance
         
         audio, _ = load_audio(temp_noisy, sr=df_state.sr())
         total_samples = audio.shape[-1]
         
-        chunk_size = df_state.sr() * 10 # 每次處理 10 秒
+        chunk_size = df_state.sr() * 10 
         num_chunks = (total_samples + chunk_size - 1) // chunk_size
         
         progress_bar = st.progress(0)
@@ -253,12 +272,10 @@ def process_media(source, atten_lim_db):
             start_idx = i * chunk_size
             end_idx = min(start_idx + chunk_size, total_samples)
             
-            # 擷取音訊並降噪
             audio_chunk = audio[:, start_idx:end_idx]
             clean_chunk = enhance(model, df_state, audio_chunk, atten_lim_db=atten_lim_db)
             enhanced_chunks.append(clean_chunk)
             
-            # 更新進度與預估時間
             current_progress = (i + 1) / num_chunks
             progress_bar.progress(current_progress)
             
@@ -267,7 +284,6 @@ def process_media(source, atten_lim_db):
             remaining_time = int(avg_time * (num_chunks - (i + 1)))
             time_text.markdown(f"**🤖 AI 運算中:** `已完成 {int(current_progress*100)}%` | `剩餘約 {remaining_time} 秒` (強度: {atten_lim_db}dB)")
 
-        # 合併降噪後的片段
         enhanced_audio = torch.cat(enhanced_chunks, dim=-1)
         save_audio(temp_clean, enhanced_audio, df_state.sr())
 
@@ -286,34 +302,39 @@ def process_media(source, atten_lim_db):
             
         subprocess.run(cmd_merge, check=True, capture_output=True)
         
-        # 儲存結果路徑至 session_state
         st.session_state.processed_file_path = output_path
         st.session_state.processed_file_name = final_output_name
         
-        # 成功後寫入 Log 紀錄
-        log_usage(original_name)
+        # 成功後寫入 CSV Log
+        duration_sec = round(time.time() - global_start_time, 1)
+        log_usage(user_name, original_name, file_size_mb, atten_lim_db, duration_sec, "成功", "無")
         
         return True, "處理成功！"
 
     except subprocess.CalledProcessError as e:
+        duration_sec = round(time.time() - global_start_time, 1)
         err_msg = e.stderr.decode("utf-8", errors="ignore") if e.stderr else "無詳細錯誤"
-        return False, f"FFmpeg 錯誤: {err_msg}"
+        full_err = f"FFmpeg 錯誤: {err_msg}"
+        log_usage(user_name, original_name, file_size_mb, atten_lim_db, duration_sec, "失敗", full_err)
+        return False, full_err
     except Exception as e:
-        return False, f"發生錯誤: {str(e)}"
+        duration_sec = round(time.time() - global_start_time, 1)
+        full_err = f"發生錯誤: {str(e)}"
+        log_usage(user_name, original_name, file_size_mb, atten_lim_db, duration_sec, "失敗", full_err)
+        return False, full_err
 
 # ================= 🖥️ 網頁前端介面 =================
 def main():
     st.title("🎙️ Suyang! 族語影音降噪工具")
     
     # ---------------- 📖 操作指引區塊 (置於首頁大標題下) ----------------
-    # 保留 Emoji 數字，僅讓箭頭變色
     st.info("💡 **快速使用**： 1️⃣ 左方上傳檔案 :red[**➔**] 2️⃣ 點擊開始降噪 :red[**➔**] 3️⃣ 右方試聽與下載 (可於左側邊欄微調強度)")
     
     with st.expander("📖 查看詳細操作說明 (初次使用建議閱讀)", expanded=False):
         st.markdown("""
         #### 🛠️ 使用步驟
         1. **📥 上傳檔案**：將需要處理的影音檔案（支援 `.mp4`, `.wav`, `.mp3` 等）拖曳或點選上傳至左下方的「檔案上傳」區塊。
-        2. **🎛️ 調整強度 (可選)**：展開最左側的隱藏邊欄 (點擊 〉符號)，您可以調整「降噪強度」。
+        2. **🎛️ 調整強度 (可選)**：展開最左側的隱藏邊欄 (點擊 〉符號)，您可以填寫姓名並調整「降噪強度」。
            - **預設 50dB**：適合多數日常錄音，能有效去噪並保留人聲自然度。
            - **最高 100dB**：適合背景非常吵雜（如強風、馬路邊、冷氣聲）的環境。
         3. **🚀 執行降噪**：按下「開始降噪處理」按鈕，系統會顯示目前進度與預估時間，請耐心等待。
@@ -326,6 +347,18 @@ def main():
     
     # ---------------- 側邊欄設定 ----------------
     with st.sidebar:
+        # 新增：使用者身分區塊
+        st.header("👤 使用者身分")
+        user_name_input = st.text_input("您的姓名 / 單位 (選填)", help="留下姓名能幫助我們統計各單位的使用狀況喔！")
+        
+        # 判斷是否填寫，未填寫則給予包含 Session ID 的預設訪客名稱
+        if not user_name_input.strip():
+            current_user = f"訪客_{st.session_state.session_id}"
+        else:
+            current_user = user_name_input.strip()
+            
+        st.markdown("---")
+        
         st.header("⚙️ 參數設定")
         atten_lim = st.slider("降噪強度 (dB)", min_value=20, max_value=100, value=50, step=5)
         st.info("💡 建議：若噪音很雜設 100；想保留環境感設 40-60。")
@@ -352,24 +385,28 @@ def main():
         admin_pwd = st.text_input("輸入管理密碼", type="password")
         
         usage_data = get_usage_data()
-        st.caption(f"📊 累計處理人次: **{len(usage_data)}** 次")
+        # 扣除掉標題列 (Header) 的數量
+        total_count = len(usage_data) - 1 if len(usage_data) > 0 else 0
+        st.caption(f"📊 累計處理人次: **{total_count}** 次")
         
         if admin_pwd == ADMIN_PASSWORD:
             st.success("密碼正確")
             if usage_data:
-                # 下載 Log 按鈕
                 log_content = "".join(usage_data)
+                # 升級：下載按鈕轉換為 CSV 格式下載
                 st.download_button(
-                    label="⬇️ 下載完整使用日誌",
-                    data=log_content,
-                    file_name=f"denoise_log_{datetime.date.today()}.txt",
-                    mime="text/plain",
+                    label="⬇️ 下載完整使用數據 (CSV)",
+                    data=log_content.encode("utf-8-sig"),
+                    file_name=f"denoise_log_{datetime.date.today()}.csv",
+                    mime="text/csv",
                     use_container_width=True
                 )
-                # 預覽最近 5 筆紀錄
-                st.markdown("**最近使用紀錄:**")
-                for line in usage_data[-5:]:
-                    st.caption(line.strip())
+                
+                # 預覽最近 3 筆紀錄 (因為 CSV 較長，所以只預覽 3 筆避免版面過滿)
+                st.markdown("**最近使用紀錄 (CSV原始資料):**")
+                for line in usage_data[-3:]:
+                    if line.strip():
+                        st.caption(line.strip())
             else:
                 st.write("目前尚無日誌紀錄。")
 
@@ -393,7 +430,8 @@ def main():
         if st.session_state.is_processing:
             with st.status("AI 降噪處理中...", expanded=True) as status:
                 st.write("⏳ 步驟 1/3: 正在提取並轉換音訊格式...")
-                success, msg = process_media(st.session_state.process_target, atten_lim)
+                # 升級：把目前使用者名稱 current_user 傳給處理函式作紀錄
+                success, msg = process_media(st.session_state.process_target, atten_lim, current_user)
                 
                 # 處理完畢更新狀態
                 st.session_state.is_processing = False
