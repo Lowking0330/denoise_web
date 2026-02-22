@@ -437,7 +437,7 @@ def main():
         st.subheader("📥 檔案上傳")
         
         supported = ("mp4", "mov", "avi", "mkv", "wav", "mp3", "m4a", "aac", "flac")
-        uploaded_file = st.file_uploader("請選擇要降噪的檔案", type=supported)
+        uploaded_file = st.file_uploader("請選擇要降噪的檔案（最大900MB限制）", type=supported)
         
         if uploaded_file and not st.session_state.processed_file_path:
             if st.button("🚀 開始降噪處理", use_container_width=True):
@@ -510,3 +510,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
