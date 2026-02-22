@@ -22,7 +22,7 @@ except Exception:
 
 # ================= ⚙️ 頁面與全域設定 =================
 st.set_page_config(
-    page_title="Suyang! 族語影音降噪工具",
+    page_title="族語影音處理工作站",
     page_icon="🎙️",
     layout="wide"
 )
@@ -288,13 +288,10 @@ def process_media(source, atten_lim_db, user_name):
         enhanced_audio = torch.cat(enhanced_chunks, dim=-1)
         
         # 🌟 v1.1 核心升級：智能音量正規化 (方案 A: 無損放大至 -1.0 dBFS)
-        # 設定目標音量上限為 -1.0 dB (約等於 0.891 的振幅，預留安全空間防破音)
         target_db = -1.0
         target_amplitude = 10 ** (target_db / 20)
-        # 找出整段音訊的最高音量峰值
         max_amplitude = torch.max(torch.abs(enhanced_audio))
         
-        # 如果聲音不是完全靜音，就將整體音量等比例放大至安全極限
         if max_amplitude > 0:
             enhanced_audio = enhanced_audio * (target_amplitude / max_amplitude)
 
@@ -337,11 +334,11 @@ def process_media(source, atten_lim_db, user_name):
         log_usage(user_name, original_name, file_size_mb, atten_lim_db, duration_sec, "失敗", full_err)
         return False, full_err
 
-# ================= 🖥️ 網頁前端介面 =================
-def main():
+# ================= 🖥️ 頁面 1：影音降噪 =================
+def render_denoise_page():
     st.title("🎙️ Suyang! 族語影音降噪工具")
     
-    # ---------------- 📖 操作指引區塊 (置於首頁大標題下) ----------------
+    # ---------------- 📖 操作指引區塊 ----------------
     st.info("💡 **快速使用**： 1️⃣ 左方上傳檔案 :red[**➔**] 2️⃣ 點擊開始降噪 :red[**➔**] 3️⃣ 右方試聽與下載 (可於左側邊欄微調強度)")
     
     with st.expander("📖 查看詳細操作說明 (初次使用建議閱讀)", expanded=False):
@@ -361,30 +358,25 @@ def main():
 
     st.markdown("---") # 分隔線
     
-    # ---------------- 側邊欄設定 ----------------
+    # ---------------- 側邊欄設定 (僅在降噪頁面顯示) ----------------
     with st.sidebar:
-        # 新增：使用者身分區塊
         st.header("👤 使用者身分")
         user_name_input = st.text_input("您的姓名 / 單位 (選填)", help="留下姓名能幫助我們統計各單位的使用狀況喔！")
         
-        # 判斷是否填寫，未填寫則給予包含 Session ID 的預設訪客名稱
         if not user_name_input.strip():
             current_user = f"訪客_{st.session_state.session_id}"
         else:
             current_user = user_name_input.strip()
-            # 成功輸入後顯示專屬族語歡迎語
             st.success(f"Embiyax su hug? 歡迎您，{current_user}！")
             
         st.markdown("---")
         
         st.header("⚙️ 參數設定")
-        # 升級：將預設值改為 40dB，確保大多數使用者的初體驗是最佳的
         atten_lim = st.slider("降噪強度 (dB)", min_value=20, max_value=100, value=40, step=5)
         st.info("💡 **建議：最佳音質區間為 30-50dB**；若噪音極大再考慮往上調。")
         
         st.markdown("---")
         
-        # 清除暫存按鈕
         if st.button("🗑️ 清除所有暫存紀錄", use_container_width=True):
             if st.session_state.processed_file_path:
                 try: 
@@ -398,13 +390,11 @@ def main():
             st.session_state.error_message = None
             st.rerun()
             
-        # 管理員日誌區域
         st.markdown("---")
         st.subheader("🔑 管理員模式")
         admin_pwd = st.text_input("輸入管理密碼", type="password")
         
         usage_data = get_usage_data()
-        # 扣除掉標題列 (Header) 的數量
         total_count = len(usage_data) - 1 if len(usage_data) > 0 else 0
         st.caption(f"📊 累計處理人次: **{total_count}** 次")
         
@@ -412,7 +402,6 @@ def main():
             st.success("密碼正確")
             if usage_data:
                 log_content = "".join(usage_data)
-                # 升級：下載按鈕轉換為 CSV 格式下載
                 st.download_button(
                     label="⬇️ 下載完整使用數據 (CSV)",
                     data=log_content.encode("utf-8-sig"),
@@ -420,8 +409,6 @@ def main():
                     mime="text/csv",
                     use_container_width=True
                 )
-                
-                # 預覽最近 3 筆紀錄 (因為 CSV 較長，所以只預覽 3 筆避免版面過滿)
                 st.markdown("**最近使用紀錄 (CSV原始資料):**")
                 for line in usage_data[-3:]:
                     if line.strip():
@@ -432,12 +419,10 @@ def main():
     # ---------------- 主畫面佈局 ----------------
     col1, col2 = st.columns([1, 1])
     
-    # 左側欄位：上傳與輸入區
     with col1:
         st.subheader("📥 檔案上傳")
-        
         supported = ("mp4", "mov", "avi", "mkv", "wav", "mp3", "m4a", "aac", "flac")
-        uploaded_file = st.file_uploader("請選擇要降噪的檔案（最大900MB限制）", type=supported)
+        uploaded_file = st.file_uploader("請選擇要降噪的檔案", type=supported)
         
         if uploaded_file and not st.session_state.processed_file_path:
             if st.button("🚀 開始降噪處理", use_container_width=True):
@@ -445,14 +430,11 @@ def main():
                 st.session_state.is_processing = True
                 st.rerun()
 
-        # 處理進度顯示區塊
         if st.session_state.is_processing:
             with st.status("AI 降噪處理中...", expanded=True) as status:
                 st.write("⏳ 步驟 1/3: 正在提取並轉換音訊格式...")
-                # 升級：把目前使用者名稱 current_user 傳給處理函式作紀錄
                 success, msg = process_media(st.session_state.process_target, atten_lim, current_user)
                 
-                # 處理完畢更新狀態
                 st.session_state.is_processing = False
                 
                 if success: 
@@ -463,21 +445,18 @@ def main():
                     st.session_state.error_message = msg
                     st.rerun()
 
-        # 錯誤訊息顯示區
         if st.session_state.error_message:
             st.error(st.session_state.error_message)
             if st.button("🔄 重試"): 
                 st.session_state.error_message = None
                 st.rerun()
 
-    # 右側欄位：預覽與下載區
     with col2:
         st.subheader("🎬 成果預覽與下載")
         
         if st.session_state.processed_file_path and os.path.exists(st.session_state.processed_file_path):
             file_ext = os.path.splitext(st.session_state.processed_file_name)[1].lower()
             
-            # 讀取檔案進行預覽
             with open(st.session_state.processed_file_path, "rb") as f:
                 bytes_data = f.read()
                 
@@ -486,7 +465,6 @@ def main():
             else: 
                 st.audio(bytes_data)
                 
-            # 下載按鈕
             st.download_button(
                 label=f"⬇️ 下載降噪後檔案 ({st.session_state.processed_file_name})", 
                 data=bytes_data, 
@@ -494,7 +472,6 @@ def main():
                 use_container_width=True
             )
             
-            # 處理下一個檔案的按鈕 (包含清理暫存邏輯)
             if st.button("🔄 繼續處理下一個檔案", use_container_width=True):
                 try: 
                     shutil.rmtree(os.path.dirname(st.session_state.processed_file_path))
@@ -508,6 +485,27 @@ def main():
         else: 
             st.write("目前尚無處理好的檔案。")
 
+# ================= 🖥️ 頁面 2：辨識與翻譯 (開發中) =================
+def render_asr_mt_page():
+    st.title("📝 族語辨識與翻譯")
+    st.info("🚧 此功能正在開發中，將於後續階段開放，敬請期待！")
+
+# ================= 🧭 主程式與導覽路由 =================
+def main():
+    # 建立左側邊欄導覽選單
+    with st.sidebar:
+        st.title("🧭 工作站導覽")
+        page_selection = st.radio(
+            "請選擇功能：",
+            ["🎙️ 影音降噪", "📝 辨識與翻譯"]
+        )
+        st.markdown("---")
+        
+    # 根據選擇渲染對應頁面
+    if page_selection == "🎙️ 影音降噪":
+        render_denoise_page()
+    elif page_selection == "📝 辨識與翻譯":
+        render_asr_mt_page()
+
 if __name__ == "__main__":
     main()
-
