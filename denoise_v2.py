@@ -220,7 +220,7 @@ def load_ai_model():
 
 # ================= 🛠️ 核心處理邏輯 =================
 def process_media(source, atten_lim_db, user_name):
-    """處理影音檔案的核心函式，並包含完整的數據紀錄"""
+    """處理影音檔案的核心函式，並包含完整的數據紀錄與智能音量優化"""
     global_start_time = time.time()
     
     original_name = source.name
@@ -284,7 +284,21 @@ def process_media(source, atten_lim_db, user_name):
             remaining_time = int(avg_time * (num_chunks - (i + 1)))
             time_text.markdown(f"**🤖 AI 運算中:** `已完成 {int(current_progress*100)}%` | `剩餘約 {remaining_time} 秒` (強度: {atten_lim_db}dB)")
 
+        # 將分段處理好的音訊合併
         enhanced_audio = torch.cat(enhanced_chunks, dim=-1)
+        
+        # 🌟 v1.1 核心升級：智能音量正規化 (方案 A: 無損放大至 -1.0 dBFS)
+        # 設定目標音量上限為 -1.0 dB (約等於 0.891 的振幅，預留安全空間防破音)
+        target_db = -1.0
+        target_amplitude = 10 ** (target_db / 20)
+        # 找出整段音訊的最高音量峰值
+        max_amplitude = torch.max(torch.abs(enhanced_audio))
+        
+        # 如果聲音不是完全靜音，就將整體音量等比例放大至安全極限
+        if max_amplitude > 0:
+            enhanced_audio = enhanced_audio * (target_amplitude / max_amplitude)
+
+        # 儲存處理並優化過音量的音訊
         save_audio(temp_clean, enhanced_audio, df_state.sr())
 
         # 4. 合成最終影音檔案
@@ -333,13 +347,15 @@ def main():
     with st.expander("📖 查看詳細操作說明 (初次使用建議閱讀)", expanded=False):
         st.markdown("""
         #### 🛠️ 使用步驟
-        1. **📥 上傳檔案**：將需要處理的影音檔案（支援 `.mp4`, `.wav`, `.mp3` 等）拖曳或點選上傳至左下方的「檔案上傳」區塊。
+        1. **📥 上傳檔案**：將需要處理的影音檔案（支援 `.mp4`, `.wav`, `.mp3`等）拖曳或點選上傳至左下方的「檔案上傳」區塊。
         2. **🎛️ 調整強度 (可選)**：展開最左側的隱藏邊欄 (點擊 〉符號)，您可以填寫姓名並調整「降噪強度」。
-           - **預設 50dB**：適合多數日常錄音，能有效去噪並保留人聲自然度。
-           - **最高 100dB**：適合背景非常吵雜（如強風、馬路邊、冷氣聲）的環境。
+           - **最佳建議 30-50dB**：最佳平衡點！能有效去除多數背景雜音，同時完美保留族語發音的自然度與氣音細節。
+           - **最高 100dB**：僅適合背景「非常吵雜」（如強風、馬路邊、大聲冷氣）的環境，但可能使人聲稍悶。
         3. **🚀 執行降噪**：按下「開始降噪處理」按鈕，系統會顯示目前進度與預估時間，請耐心等待。
         4. **💾 預覽與下載**：處理完畢後，右側畫面會出現播放器。您可以先試聽/試看，確認滿意後再點擊按鈕下載。
 
+        🔊 **[v1.1 升級] 智能音量優化**：降噪後系統會自動偵測並將人聲無損放大至安全極限 (-1dB)，保證聲音大聲清晰且絕不破音！
+        
         ⚠️ **隱私與安全聲明**：本系統為自動化即時處理。當您下載檔案或點擊「處理下一個」時，伺服器會自動銷毀您的所有影音暫存檔，絕不留存原始資料，請安心使用！
         """)
 
@@ -362,8 +378,9 @@ def main():
         st.markdown("---")
         
         st.header("⚙️ 參數設定")
-        atten_lim = st.slider("降噪強度 (dB)", min_value=20, max_value=100, value=50, step=5)
-        st.info("💡 建議：若噪音很雜設 100；想保留環境感設 40-60。")
+        # 升級：將預設值改為 40dB，確保大多數使用者的初體驗是最佳的
+        atten_lim = st.slider("降噪強度 (dB)", min_value=20, max_value=100, value=40, step=5)
+        st.info("💡 **建議：最佳音質區間為 30-50dB**；若噪音極大再考慮往上調。")
         
         st.markdown("---")
         
